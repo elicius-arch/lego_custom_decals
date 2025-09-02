@@ -3,7 +3,12 @@ import numpy as np
 import os
 import cv2
 
+from utils.image_utils import show_image, \
+    read_image_with_alpha
+
+
 INPUT_FILE = 'arya.png'
+
 
 def extract_sub_decals(input_file: str):
 
@@ -14,17 +19,39 @@ def extract_sub_decals(input_file: str):
     os.makedirs(output_dir, exist_ok=True)
 
     # Bild laden
-    img = Image.open(input_path).convert("RGBA")
-    arr = np.array(img)
+    img = read_image_with_alpha(input_path)
 
-    # Alpha-Kanal extrahieren
-    alpha = arr[:, :, 3]
+    # show_image(img)
 
-    # Binärmaske für nicht-transparente Pixel
-    mask = (alpha > 0).astype(np.uint8) * 255
+    # Hintergrundfarbe finden
+    # Für schnellere Entwicklung nehmen wir den ersten Pixel
+    # oben links
+    background_color = img[0, 0, :]
+
+    # Entscheiden, ob der Hintergrund transparent ist
+    background_is_transparent: bool = False
+    if background_color[3] == 0:
+        background_is_transparent = True
+
+    if background_is_transparent:
+        print("Hintergrund ist transparent.")
+        # Alpha-Kanal extrahieren
+        alpha = img[:, :, 3]
+
+        # Binärmaske für nicht-transparente Pixel
+        mask = (alpha > 0).astype(np.uint8) * 255
+        print(mask)
+
+    else:
+        print("Hintergrund ist nicht transparent.")
+
+        gray = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
+        _, mask = cv2.threshold(
+            gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
     # Konturen finden
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     print(f"Gefundene Konturen: {len(contours)}")
 
@@ -38,12 +65,19 @@ def extract_sub_decals(input_file: str):
             continue
 
         # Teil ausschneiden
-        cropped = arr[y:y+h, x:x+w].copy()
+        cropped = img[y:y+h, x:x+w].copy()
 
         # Transparenz für Hintergrund erhalten
         part_mask = np.zeros((h, w), dtype=np.uint8)
-        cv2.drawContours(part_mask, [cnt - [x, y]], -1, 255, thickness=cv2.FILLED)
+        cv2.drawContours(part_mask, [cnt - [x, y]], -
+                         1, 255, thickness=cv2.FILLED)
         cropped[:, :, 3] = cv2.bitwise_and(cropped[:, :, 3], part_mask)
+
+        # Convert BGR to RGB
+        if cropped.shape[2] == 4:
+            cropped = cv2.cvtColor(cropped, cv2.COLOR_BGRA2RGBA)
+        else:
+            cropped = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGBA)
 
         # Speichern
         out_path = os.path.join(output_dir, f"part_{part_index}.png")
