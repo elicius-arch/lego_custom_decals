@@ -40,7 +40,6 @@ def extract_sub_decals(input_file: str):
 
         # Binärmaske für nicht-transparente Pixel
         mask = (alpha > 0).astype(np.uint8) * 255
-        print(mask)
 
     else:
         print("Hintergrund ist nicht transparent.")
